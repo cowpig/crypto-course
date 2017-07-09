@@ -1,27 +1,4 @@
-import sys
-from functools import reduce
-
-def strxor(a, b):     # xor two strings of different lengths
-    if len(a) > len(b):
-       return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a[:len(b)], b)])
-    else:
-       return "".join([chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b[:len(a)])])
-
-def random(size=16):
-    return open("/dev/urandom", 'rb').read(size)
-
-def encrypt(key, msg):
-    c = strxor(key, msg)
-    print()
-    print(c.encode('hex'))
-    return c
-
-def main():
-    key = random(1024)
-    ciphertexts = [encrypt(key, msg) for msg in MSGS]
-
-def long_to_bytes(n):
-    return n.to_bytes((n.bit_length() + 7) // 8, byteorder='big')
+from binascii import unhexlify
 
 output = [
     '315c4eeaa8b5f8aaf9174145bf43e1784b8fa00dc71d885a804e5ee9fa40b16349c146fb778cdf2d3aff021dfff5b403b510d0d0455468aeb98622b137dae857553ccd8883a7bc37520e06e515d22c954eba5025b8cc57ee59418ce7dc6bc41556bdb36bbca3e8774301fbcaa3b83b220809560987815f65286764703de0f3d524400a19b159610b11ef3e',
@@ -37,3 +14,66 @@ output = [
 ]
 target = '32510ba9babebbbefd001547a810e67149caee11d945cd7fc81a05e9f85aac650e9052ba6a8cd8257bf14d13e6f0a803b54fde9e77472dbff89d71b57bddef121336cb85ccb8f3315f4b52e301d16e9f52f904'
 
+output.append(target)
+
+with open('char_frequencies.tsv') as f:
+    data = f.read()
+
+freqs = {}
+for line in data.split('\n'):
+    code, char, count, freq = line.split('\t')
+    freqs[int(code)] = {
+        'freq': float(freq) / 100.,
+        'char': char,
+        'count': count,
+    }
+    
+    print(line)
+
+sorted_keys = sorted(list(freqs.keys()), key=lambda k: freqs[k]['freq'])[::-1]
+
+output_as_bytes = [unhexlify(line) for line in output]
+outs = [o[:95] for o in output_as_bytes]
+
+def freq(o):
+    return freqs.get(o, {}).get('freq', 0.0)
+
+def prob(key, i):
+    output = 1
+    for line in outs:
+        if i < len(line):
+            output *= freq(line[i] ^ key)
+
+    return output
+
+N_CHARS = 155
+
+all_probs = {}
+for i in range(N_CHARS):
+    this_prob = {}
+    for key in range(256):
+        this_prob[key] = prob(key, i)
+
+    all_probs[i] = this_prob
+
+most_probable_key = [max(range(256), key=lambda k:all_probs[i][k]) for i in range(N_CHARS)]
+
+def xored_line(line, whole_key):
+    return [chr(a ^ key) for a, key in zip(line[:N_CHARS], whole_key)]
+
+def print_all_lines(whole_key):
+    print(''.join('{} 1 2 3 4 5 6 7 8 9 '.format(i) for i in range(9)))
+    for line in outs:
+        xored = ' '.join(xored_line(line, whole_key))
+        print(xored)
+
+most_probable_key[0] = outs[3][0] ^ ord('T')
+most_probable_key[7] = outs[0][7] ^ ord('f')
+most_probable_key[25] = outs[1][25] ^ ord('y')
+most_probable_key[39] = outs[0][39] ^ ord('m')
+most_probable_key[40] = outs[0][40] ^ ord(' ')
+most_probable_key[41] = outs[0][41] ^ ord('c')
+
+print_all_lines(most_probable_key)
+
+print(''.join(xored_line(outs[-1], most_probable_key)))
